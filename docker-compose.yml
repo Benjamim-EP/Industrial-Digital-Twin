@@ -1,0 +1,49 @@
+version: '3.8'
+
+services:
+  kafka:
+    image: confluentinc/cp-kafka:7.4.0
+    hostname: kafka
+    container_name: kafka
+    ports:
+      - "9092:9092"
+      - "9093:9093"
+    environment:
+      CLUSTER_ID: 'MkU3OEVBNTcwNTJENDM2Qk'
+      KAFKA_NODE_ID: 1
+      KAFKA_CONTROLLER_QUORUM_VOTERS: '1@kafka:9093'
+      KAFKA_PROCESS_ROLES: 'broker,controller'
+      KAFKA_CONTROLLER_LISTENER_NAMES: 'CONTROLLER'
+      
+      # --- AQUI ESTÁ A MÁGICA DA ARQUITETURA ---
+      # 1. CONTROLLER: Porta 9093 (Interna)
+      # 2. EXTERNAL: Porta 9092 (Para o seu Windows/Java)
+      # 3. INTERNAL: Porta 29092 (Para o Kafdrop/Docker)
+      KAFKA_LISTENERS: 'CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:9092,INTERNAL://0.0.0.0:29092'
+      
+      # Aqui o Kafka diz "quem ele é" dependendo de quem pergunta
+      KAFKA_ADVERTISED_LISTENERS: 'EXTERNAL://localhost:9092,INTERNAL://kafka:29092'
+      
+      # Mapeamento dos protocolos
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: 'CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT,INTERNAL:PLAINTEXT'
+      
+      # O Kafka usa a rede interna para falar entre seus próprios brokers
+      KAFKA_INTER_BROKER_LISTENER_NAME: 'INTERNAL'
+      
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: 1
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: 1
+      KAFKA_HEAP_OPTS: "-Xmx512M -Xms512M"
+
+  kafdrop:
+    image: obsidiandynamics/kafdrop
+    restart: "no"
+    ports:
+      - "9000:9000"
+    environment:
+      # Agora o Kafdrop conecta na rede INTERNA do Docker
+      KAFKA_BROKERCONNECT: "kafka:29092"
+      JVM_OPTS: "-Xms32M -Xmx64M"
+    depends_on:
+      - kafka
