@@ -58,6 +58,32 @@
             <artifactId>spring-kafka-test</artifactId>
             <scope>test</scope>
         </dependency>
+        <!-- Apache Camel para Spring Boot (Integração) -->
+        <dependency>
+            <groupId>org.apache.camel.springboot</groupId>
+            <artifactId>camel-spring-boot-starter</artifactId>
+            <version>4.3.0</version>
+        </dependency>
+        
+        <!-- Componente HTTP do Camel (para tentar chamar API externa) -->
+        <dependency>
+            <groupId>org.apache.camel</groupId>
+            <artifactId>camel-http</artifactId>
+            <version>4.3.0</version>
+        </dependency>
+
+        <!-- Resilience4J para Camel (O Circuit Breaker) -->
+        <dependency>
+            <groupId>org.apache.camel</groupId>
+            <artifactId>camel-resilience4j</artifactId>
+            <version>4.3.0</version>
+        </dependency>
+        
+        <!-- Spring AOP (Necessário para o Circuit Breaker funcionar) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-aop</artifactId>
+        </dependency>
     </dependencies>
     <build>
         <plugins>

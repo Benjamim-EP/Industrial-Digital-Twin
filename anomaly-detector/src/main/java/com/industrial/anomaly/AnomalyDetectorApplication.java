@@ -1,4 +1,4 @@
-package main.java.com.industrial.anomaly; // Note o pacote: com.industrial.anomaly
+package com.industrial.anomaly; // Note o pacote: com.industrial.anomaly
 
 import org.springframework.boot.SpringApplication;
 import org.springframework.boot.autoconfigure.SpringBootApplication;
