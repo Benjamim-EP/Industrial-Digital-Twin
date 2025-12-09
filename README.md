@@ -124,17 +124,14 @@ industrial-digital-twin/
 
 ---
 
-## 📚 Fundamentação Teórica e Arquitetural
-
-Este projeto não é apenas código; é a aplicação prática dos conceitos de Engenharia de Software Moderna.
-
 ### 1. Clean Architecture (Robert C. Martin)
 A aplicação respeita a Regra de Dependência. O domínio (`SensorMeasurement`) é agnóstico a frameworks.
-![Clean Arch Mapped](docs\codigo_limpo.jpeg)
+![Clean Arch Mapped](docs/codigo_limpo.jpeg)
 
 ### 2. Resiliência e Circuit Breaker (Cloud Native Java)
 Implementação do padrão Circuit Breaker para evitar falhas em cascata.
-![Circuit Breaker](docs\Event_Driven_Architecture.jpeg)
+![Circuit Breaker](docs/Event_Driven_Architecture.jpeg)
+
 > **Implementação:** Quando a API externa falha, o Resilience4J redireciona o fluxo para o sistema de arquivos (Fallback), garantindo Zero Data Loss.
 
 ### 3. Resiliência & Circuit Breaker (State Machine)
@@ -143,17 +140,6 @@ Implementação do padrão Circuit Breaker para evitar falhas em cascata.
 Para garantir a estabilidade do sistema quando dependências externas falham, implementei o padrão **Circuit Breaker** usando **Resilience4J**. A arquitetura segue uma máquina de estados para gerenciar a saúde da integração:
 
 ![Diagrama Circuit Breaker](docs/A_state_machine.jpeg)
-*(Sugestão: Edite uma imagem de State Machine colocando os textos abaixo)*
-
-*   **🟢 CLOSED (Estado Normal):** O `AnomalyDetector` envia alertas para a API externa via Apache Camel. Se a taxa de sucesso for alta, o circuito permanece fechado.
-*   **🔴 OPEN (Falha Detectada):** Quando a taxa de erro excede 50% (simulado pela API inexistente), o circuito abre. Novas requisições são bloqueadas imediatamente para evitar o consumo de Threads e *Cascading Failures*.
-*   **🛡️ FALLBACK (Graceful Degradation):** Em vez de retornar erro, o sistema ativa o mecanismo de degradação graciosa, redirecionando o fluxo para persistência em disco na pasta `backup-alerts`.
-*   **🟡 HALF-OPEN (Recuperação):** Após 5 segundos, o Resilience4J permite uma requisição de teste. Se passar, o circuito fecha novamente; se falhar, volta a abrir.
-
-> **No Código:** A configuração pode ser vista em `AnomalyAlertRoute.java`, onde defino `failureRateThreshold(50)` e `waitDurationInOpenState(5000)`.
-
----
-
 ## 👤 Autor
 
 **Benjamim Alves N. Neto**
