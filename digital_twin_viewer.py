@@ -8,24 +8,11 @@ import time
 import numpy as np
 from scipy.spatial.transform import Rotation as R
 
-# --- IMPORTAÇÃO DOS ARQUÉTIPOS ---
-# Tentamos importar os nomes corretos.
-# O Rerun sugere "Scalars" (plural) na sua versão.
-try:
-    from rerun.archetypes import Asset3D, Transform3D, TextDocument, Scalars
-    SCALAR_CLASS = Scalars
-except ImportError:
-    try:
-        # Tenta singular se o plural falhar
-        from rerun.archetypes import Asset3D, Transform3D, TextDocument, Scalar
-        SCALAR_CLASS = Scalar
-    except ImportError:
-        # Fallback genérico
-        print("⚠️ Aviso: Não foi possível importar Scalar/Scalars. Gráficos podem falhar.")
-        SCALAR_CLASS = None
-        from rerun.archetypes import Asset3D, Transform3D, TextDocument
+# --- CONFIGURAÇÃO DE IMPORTS RERUN 0.28+ ---
+# Usando a classe Scalars (plural) conforme o erro anterior indicou
+from rerun.archetypes import Asset3D, Transform3D, TextDocument, Scalars
 
-# --- CONFIGURAÇÃO DE ARQUIVOS ---
+# --- CONFIGURAÇÃO ---
 ASSETS_DIR = "3dassets" 
 FILES = {
     "base": "asset_base_fixa.glb",
@@ -35,37 +22,35 @@ FILES = {
     "arm3": "asset_braco3.glb"
 }
 
-# --- CONFIGURAÇÃO DE MONTAGEM ---
-OFFSET_TORRE = [0, 0, 0]      
-OFFSET_ARM1  = [0, 0, 0.2]  # Um leve ajuste pra cima
-OFFSET_ARM2  = [0, 0.2, 0]  # Um leve ajuste pra frente/cima
-OFFSET_ARM3  = [0, 0.2, 0]  # Um leve ajuste pra frente/cima 
-
 def run_simulation():
     print(f"ℹ️ Versão do Rerun: {rr.__version__}")
     rr.init("Industrial Digital Twin", spawn=True)
 
     if not os.path.exists(ASSETS_DIR):
-        print(f"❌ ERRO CRÍTICO: A pasta '{ASSETS_DIR}' não foi encontrada!")
+        print(f"❌ ERRO: Pasta '{ASSETS_DIR}' não encontrada!")
         return
 
-    # 1. CARREGAMENTO DOS MODELOS 3D
-    print("⏳ Carregando modelos 3D...")
-    
-    def get_path(key):
-        return os.path.join(ASSETS_DIR, FILES[key])
+    def get_path(key): return os.path.join(ASSETS_DIR, FILES[key])
 
-    # Rotação para levantar o robô
+    # ---------------------------------------------------------
+    # 1. SETUP ESTÁTICO (MONTAGEM IGUAL AO SEU DEBUG)
+    # ---------------------------------------------------------
+    print("⏳ Carregando modelos e aplicando rotação de base...")
+    
+    # Rotação X=90 que você validou para levantar o robô
     q_fix_base = R.from_euler('x', 90, degrees=True).as_quat()
     rr.log("twin/robot", Transform3D(rotation=rr.Quaternion(xyzw=q_fix_base)))
     
+    # Carregando as peças (Todas em POS [0,0,0] conforme seu sucesso no debug)
     rr.log("twin/robot", Asset3D(path=get_path("base")))
     rr.log("twin/robot/torre", Asset3D(path=get_path("torre")))
     rr.log("twin/robot/torre/arm1", Asset3D(path=get_path("arm1")))
     rr.log("twin/robot/torre/arm1/arm2", Asset3D(path=get_path("arm2")))
     rr.log("twin/robot/torre/arm1/arm2/arm3", Asset3D(path=get_path("arm3")))
 
+    # ---------------------------------------------------------
     # 2. CONEXÃO KAFKA
+    # ---------------------------------------------------------
     try:
         consumer = KafkaConsumer(
             'industrial-sensors-v1',
@@ -73,79 +58,75 @@ def run_simulation():
             auto_offset_reset='latest',
             value_deserializer=lambda x: json.loads(x.decode('utf-8'))
         )
-        print("🚀 Visualizador Iniciado! Aguardando dados...")
+        print("🚀 Visualizador Iniciado! Aguardando dados do Kafka...")
     except Exception as e:
-        print(f"❌ Erro ao conectar no Kafka: {e}")
+        print(f"❌ Erro Kafka: {e}")
         return
 
-    # Variáveis de Estado
-    cycle_time = 0.0
+    # Variáveis para controle de animação
     accumulated_rotation_z = 0.0
+    cycle_time = 0.0
 
-    print("🎥 Loop de renderização ativo...")
+    print("🎥 Renderizando animação baseada em sensores...")
     
     for message in consumer:
         data = message.value
         
+        # Extração de dados
         sensor_id = data.get('sensorId', 'Unknown')
         temp = data.get('temperature', 0.0)
         vib = data.get('vibration', 0.0)
         rpm = data.get('rotationSpeed', 0.0)
 
-        # Lógica de Movimento
-        # 1. Deixa bem lento para visualizarmos
-        velocidade_angular = rpm / 3000.0 
+        # --- LÓGICA DE MOVIMENTO ---
+        # A torre gira baseado no RPM
+        velocidade_angular = rpm / 2000.0 # Ajuste de velocidade
         accumulated_rotation_z += velocidade_angular
         
-        # 2. Ciclo de trabalho mais lento
-        cycle_time += 0.01 + (velocidade_angular * 0.05)
-        
-        # 3. Movimentos curtos (apenas 10 a 20 graus) para não "quebrar" o braço visualmente
-        angle_arm1 = Math_map_sin(cycle_time, -10, 20) 
-        angle_arm2 = Math_map_cos(cycle_time, -10, 20)
+        # O braço oscila suavemente (cycle_time)
+        cycle_time += 0.02
+        angle_arm1 = math.sin(cycle_time) * 15 # Oscila 15 graus
+        angle_arm2 = math.cos(cycle_time) * 15 # Oscila 15 graus
 
-        # Anomalia
+        # --- ANOMALIA (TREMOR) ---
         is_anomaly = vib > 5.0
         status_msg = "OK"
-        pos_garra_x = OFFSET_ARM3[0]
-        pos_garra_y = OFFSET_ARM3[1]
+        jitter = [0.0, 0.0, 0.0]
         
         if is_anomaly:
-            jitter = (vib / 10.0) * 0.1
-            pos_garra_x += random.uniform(-jitter, jitter)
-            pos_garra_y += random.uniform(-jitter, jitter)
             status_msg = "CRITICAL VIBRATION"
+            # Pequeno deslocamento aleatório na garra (arm3)
+            j_amt = (vib / 10.0) * 0.02 
+            jitter = [random.uniform(-j_amt, j_amt) for _ in range(3)]
 
-        # 3. ATUALIZAÇÃO 3D
-        q_torre = R.from_euler('z', accumulated_rotation_z, degrees=False).as_quat()
-        q_arm1 = R.from_euler('x', angle_arm1, degrees=True).as_quat()
-        q_arm2 = R.from_euler('x', angle_arm2, degrees=True).as_quat()
-
-        rr.log("twin/robot/torre", Transform3D(translation=OFFSET_TORRE, rotation=rr.Quaternion(xyzw=q_torre)))
-        rr.log("twin/robot/torre/arm1", Transform3D(translation=OFFSET_ARM1, rotation=rr.Quaternion(xyzw=q_arm1)))
-        rr.log("twin/robot/torre/arm1/arm2", Transform3D(translation=OFFSET_ARM2, rotation=rr.Quaternion(xyzw=q_arm2)))
-        rr.log("twin/robot/torre/arm1/arm2/arm3", Transform3D(translation=[pos_garra_x, pos_garra_y, OFFSET_ARM3[2]]))
-
-        # 4. GRÁFICOS (Correção Principal)
-        if SCALAR_CLASS:
-            # Importante: Scalars espera uma lista, ex: Scalars([temp])
-            rr.log("telemetry/temperature", SCALAR_CLASS([temp]))
-            rr.log("telemetry/vibration", SCALAR_CLASS([vib]))
-            rr.log("telemetry/rpm", SCALAR_CLASS([rpm]))
+        # ---------------------------------------------------------
+        # 3. LOG DE TRANSFORMAÇÕES (MOVIMENTO)
+        # ---------------------------------------------------------
         
-        # 5. LOGS
-        try:
-            rr.log("logs/system", TextDocument(f"Sensor: {sensor_id}\nStatus: {status_msg}"))
-        except:
-            pass
+        # Torre gira no eixo Z LOCAL (que agora é o eixo de rotação após o X=90 global)
+        q_torre = R.from_euler('y', accumulated_rotation_z/100, degrees=False).as_quat()
+        rr.log("twin/robot/torre", Transform3D(rotation=rr.Quaternion(xyzw=q_torre)))
 
-def Math_map_sin(t, min_val, max_val):
-    val = math.sin(t)
-    return min_val + (max_val - min_val) * ((val + 1) / 2)
+        # Braços giram no eixo X LOCAL (dobradiça)
+        q_arm1 = R.from_euler('x', angle_arm1, degrees=True).as_quat()
+        rr.log("twin/robot/torre/arm1", Transform3D(rotation=rr.Quaternion(xyzw=q_arm1)))
 
-def Math_map_cos(t, min_val, max_val):
-    val = math.cos(t)
-    return min_val + (max_val - min_val) * ((val + 1) / 2)
+        q_arm2 = R.from_euler('x', angle_arm2, degrees=True).as_quat()
+        rr.log("twin/robot/torre/arm1/arm2", Transform3D(rotation=rr.Quaternion(xyzw=q_arm2)))
+
+        # A garra apenas treme se houver anomalia (translation)
+        # Como as peças estão montadas no 0,0,0, aplicamos apenas o jitter
+        rr.log("twin/robot/torre/arm1/arm2/arm3", Transform3D(translation=jitter))
+
+        # ---------------------------------------------------------
+        # 4. TELEMETRIA E LOGS
+        # ---------------------------------------------------------
+        # Usando Scalars([valor]) conforme exigido pela sua versão 0.28.2
+        rr.log("telemetry/temperature", Scalars([temp]))
+        rr.log("telemetry/vibration", Scalars([vib]))
+        rr.log("telemetry/rpm", Scalars([rpm]))
+        
+        rr.log("logs/status", TextDocument(f"Sensor: {sensor_id}\nTemp: {temp:.2f}°C\nStatus: {status_msg}"))
 
 if __name__ == "__main__":
     run_simulation()
